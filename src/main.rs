@@ -1,121 +1,114 @@
-use std::cmp::Ordering;
-use rand::Rng;
+extern crate nalgebra as na;
 
-struct Player {
-    skill: u8,
-    name: String,
-    rank: i32,
-    total_wins: i32,
-}
+use na::{Vector2, Point2, Isometry2};
+use std::f64::consts;
+use nphysics2d::object::{BodyStatus, RigidBodyDesc};
+use nphysics2d::math::{Velocity, Inertia};
+use nphysics2d::object::{DefaultBodySet, DefaultColliderSet};
+use nphysics2d::force_generator::DefaultForceGeneratorSet;
+use nphysics2d::joint::DefaultJointConstraintSet;
+use nphysics2d::world::{DefaultMechanicalWorld, DefaultGeometricalWorld};
+use ncollide2d::shape::{ShapeHandle, Ball};
+use ncollide2d::world;
+use nphysics2d::object::ColliderDesc;
+use nphysics2d::material::{MaterialHandle, BasicMaterial};
 
-fn create_player(skill: u8) -> Player {
-    let mut name = String::new();
-    name.push_str("Player-");
-    name.push_str(&skill.to_string());
-    name.push_str("-");
-    Player {
-        skill,
-        rank: 1000,
-        name: name,
-        total_wins: 0,
-    }
-}
-
-fn create_playerlist(number:u8) -> Vec<Player> {
-    let mut playerlist = Vec::with_capacity(usize::from(number));
-    for x in 0..number {
-        playerlist.push(create_player(x));
-    }
-    return playerlist
-}
-
-fn play_match(mut playerlist:Vec<Player>, p1:usize, p2:usize) -> Vec<Player> {
-    println!("{}, {}, {} VS {}, {}, {}", &playerlist[p1].name, &playerlist[p1].skill, &playerlist[p1].rank, &playerlist[p2].name, &playerlist[p2].skill, &playerlist[p2].rank);
-    let base:i32 = 10;
-    let transformed_rating_p1:f64 = base.pow(playerlist[p1].rank as u32 / 400) as f64;
-    let transformed_rating_p2:f64 = base.pow(playerlist[p2].rank as u32 / 400) as f64;
-    let expected_score_p1:f64 = transformed_rating_p1 / (transformed_rating_p1 + transformed_rating_p2);
-    let expected_score_p2:f64 = transformed_rating_p2 / (transformed_rating_p2 + transformed_rating_p1);
-    let score_p1:f64;
-    let score_p2:f64;
-    match playerlist[p1].skill.cmp(&playerlist[p2].skill) {
-        Ordering::Less => {
-            println!("p2 win");
-            score_p1 = 0.0;
-            score_p2 = 1.0;
-            playerlist[p2].total_wins = playerlist[p2].total_wins + 1;
-        },
-        Ordering::Greater => {
-            println!("p1 win");
-            score_p1 = 1.0;
-            score_p2 = 0.0;
-            playerlist[p1].total_wins = playerlist[p1].total_wins + 1;
-        },
-        Ordering::Equal => {
-            println!("tie!");
-            score_p1 = 0.5;
-            score_p2 = 0.5;
-        },
-    }
-
-    playerlist[p1].rank = (f64::from(playerlist[p1].rank) + 32.0 * (score_p1 - expected_score_p1)).round() as i32;
-    playerlist[p2].rank = (f64::from(playerlist[p2].rank) + 32.0 * (score_p2 - expected_score_p2)).round() as i32;
-    return playerlist
-}
-
-fn play_all_matches(mut playerlist:Vec<Player>) -> Vec<Player> {
-    const STEP_SIZE:usize = 10;
-    let num_players = playerlist.len();
-    if num_players % STEP_SIZE != 0 {
-        panic!("NUM_PLAYERS not divisible by STEP_SIZE");
-    }
-
-    let mut match_list: Vec<_> = (0..num_players).collect();
-    match_list = knuth_shuffle(match_list);
-
-    for offset in (0..num_players).step_by(10) {
-        for j in offset..9 + offset {
-            for k in j+1..10 + offset{
-                playerlist = play_match(playerlist, match_list[j], match_list[k]);
-            }
-        }
-    }
-    return playerlist
-}
-
-fn knuth_shuffle(mut vector:Vec<usize>) -> Vec<usize> {
-    let mut holder:usize;
-    let n = vector.len();
-    for i in 0..n-1 {
-        let rand_num = rand::thread_rng().gen_range(i, n);
-        holder = vector[i];
-        vector[i] = vector[rand_num];
-        vector[rand_num] = holder;
-    }
-    return vector
-}
 
 
 fn main() {
-    const NUM_PLAYERS:u8 = 100;
-    println!("start");
-    println!("Creating Players");
-    let mut playerlist = create_playerlist(NUM_PLAYERS);
-    if NUM_PLAYERS % 10 != 0 {
-        println!("Bad number of players");
-        return
-    }
-    println!("Name, Skill, Rank");
-    for player in &playerlist {
-        println!("{}, {}, {}", &player.name, &player.skill, &player.rank);
-    }
-    println!("Created Players");
-    println!("Playing");
-    for _x in 0..20 {
-        playerlist = play_all_matches(playerlist);
-        println!("Name, Skill, Rank, Wins");
-        for player in &playerlist {
-            println!("{}, {}, {}, {}", &player.name, &player.skill, &player.rank, &player.total_wins);
-        }
-    }
-}
+    let mut mechanical_world = DefaultMechanicalWorld::new(Vector2::new(0.0, -9.81));
+    let mut geometrical_world = DefaultGeometricalWorld::new();
+    let mut bodies = DefaultBodySet::new();
+    let mut colliders = DefaultColliderSet::new();
+    let mut joint_constraints = DefaultJointConstraintSet::new();
+    let mut force_generators = DefaultForceGeneratorSet::new();
+
+    let rigid_body = RigidBodyDesc::new()
+        // The rigid body translation.
+        // Default: zero vector.
+        .translation(Vector2::y() * 5.0)
+        // The rigid body rotation.
+        // Default: no rotation.
+        .rotation(5.0)
+        // The rigid body position. Will override `.translation(...)` and `.rotation(...)`.
+        // Default: the identity isometry.
+        .position(Isometry2::new(Vector2::new(1.0, 2.0), consts::PI))
+        // Whether or not this rigid body is affected by gravity.
+        // Default: true
+        .gravity_enabled(false)
+        // The status of this rigid body.
+        // Default: BodyStatus::Dynamic
+        .status(BodyStatus::Kinematic)
+        // The velocity of this body.
+        // Default: zero velocity.
+        .velocity(Velocity::linear(1.0, 2.0))
+        // The linear damping applied to this rigid body velocity to slow it down automatically.
+        // Default: zero (no damping at all).
+        .linear_damping(10.0)
+        // The angular damping applied to this rigid body velocity to slow down its rotation automatically.
+        // Default: zero (no damping at all).
+        .angular_damping(5.0)
+        // The maximum linear velocity this rigid body can reach.
+        // Default: f32::max_value() or f64::max_value() (no limit).
+        .max_linear_velocity(10.0)
+        // The maximum angular velocity this rigid body can reach.
+        // Default: f32::max_value() or f64::max_value() (no limit).
+        .max_angular_velocity(1.7)
+        // The angular inertia tensor of this rigid body, expressed on its local-space.
+        // Default: the zero matrix.
+        //.angular_inertia(3.0)
+        // The rigid body mass.
+        // Default: 0.0
+        .mass(1.2)
+        // The mass and angular inertia of this rigid body expressed in
+        // its local-space. Default: zero.
+        // Will override previous calls to `.mass(...)` and `.angular_inertia(...)`.
+        .local_inertia(Inertia::new(1.0, 3.0))
+        // The center of mass of this rigid body expressed in its local-space.
+        // Default: the origin.
+        .local_center_of_mass(Point2::new(1.0, 2.))
+        // The threshold for putting this rigid body to sleep.
+        // Default: Some(ActivationStatus::default_threshold())
+        .sleep_threshold(None)
+        // The translations that will be locked for this rigid body.
+        // Default: nothing is locked (false everywhere).
+        .kinematic_translations(Vector2::new(true, false))
+        // The translations that will be locked for this rigid body.
+        // Default: nothing is locked (false everywhere).
+        .kinematic_rotations(true)
+        // Whether this rigid body motion should be interpolated linearly during CCD resolution.
+        // Default: false (which implies non-linear interpolation)
+        //.enable_linear_motion_interpolation(true)
+        // Arbitrary user-defined data associated to the rigid body to be built.
+        // Default: no associated data
+        .user_data(10)
+        // All done, actually build the rigid-body.
+        .build();    let shape = ShapeHandle::new(Ball::new(1.5));
+
+    let mut rb_desc = RigidBodyDesc::new()
+        .mass(1.2);
+
+// Build a first rigid body.
+    let rigid_body1 = rb_desc.build();
+
+// Change the rigid body translation and velocity before building
+// another one. It will still have the same mass and rotation as
+// initialized above.
+    let mut rigid_body2 = rb_desc.set_translation(Vector2::new(2.0, 1.0))
+        .set_velocity(Velocity::linear(1.0, 3.0))
+        .build();
+    rigid_body2.set_mass(10.0);
+    let mut body_set = DefaultBodySet::new();
+    let handle = body_set.insert(rigid_body);
+    println!("built");
+    loop {
+        // Run the simulation.
+        println!("running");
+        mechanical_world.step(
+            &mut geometrical_world,
+            &mut bodies,
+            &mut colliders,
+            &mut joint_constraints,
+            &mut force_generators
+        )
+    }}
